@@ -1,5 +1,5 @@
 export const config = {
-  domainSource: "https://www.couteau.ai", // Your WeWeb app preview link
+  domainSource: "https://dbca59a5-fca8-4527-9d3a-2871dbf3822c.weweb-preview.io", // Your WeWeb app preview link
   patterns: [
       {
           pattern: "/recipe/[^/]+",
