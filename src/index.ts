@@ -214,7 +214,15 @@ class CustomHeaderHandler {
         console.log('Removing noindex tag');
         element.remove();
       }
-	    
+
+      // Replace favicon URL
+	if (element.tagName == "link") {
+	  const rel = element.getAttribute("rel");
+	  if (rel === "icon" || rel === "shortcut icon") {
+	    console.log('Replacing favicon URL');
+	    element.setAttribute("href", `${config.domainSource}/favicon.ico?_wwcv=150`);
+	  }
+	}   
     }
   }
 }
