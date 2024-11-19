@@ -1,3 +1,4 @@
+// index.ts
 import { config } from '../config.js';
 
 export default {
@@ -148,6 +149,9 @@ export default {
 class CustomHeaderHandler {
   constructor(metadata) {
     this.metadata = metadata;
+    this.viewportMetaFound = false;
+    this.statusBarMetaFound = false;
+    this.appleWebAppCapableFound = false;
   }
 
   element(element) {
@@ -160,6 +164,18 @@ class CustomHeaderHandler {
     // Replace meta tags content
     if (element.tagName === 'meta') {
       const name = element.getAttribute('name');
+
+      if (name === 'viewport') {
+        element.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover');
+        this.viewportMetaFound = true;
+      } else if (name === 'apple-mobile-web-app-status-bar-style') {
+        element.setAttribute('content', 'black');
+        this.statusBarMetaFound = true;
+      } else if (name === 'apple-mobile-web-app-capable') {
+        element.setAttribute('content', 'yes');
+        this.appleWebAppCapableFound = true;
+      }
+
       switch (name) {
         case 'title':
           element.setAttribute('content', this.metadata.title);
@@ -194,8 +210,8 @@ class CustomHeaderHandler {
           break;
       }
 
-      const type = element.getAttribute('property');
-      switch (type) {
+      const property = element.getAttribute('property');
+      switch (property) {
         case 'og:title':
           console.log('Replacing og:title');
           element.setAttribute('content', this.metadata.title);
@@ -224,6 +240,29 @@ class CustomHeaderHandler {
       if (rel === 'icon' || rel === 'shortcut icon') {
         console.log('Replacing favicon URL');
         element.setAttribute('href', `${config.domainSource}/favicon.ico?_wwcv=150`);
+      }
+    }
+  }
+
+  end(element) {
+    if (element.tagName === 'head') {
+      if (!this.viewportMetaFound) {
+        element.append(
+          `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`,
+          { html: true }
+        );
+      }
+      if (!this.appleWebAppCapableFound) {
+        element.append(
+          `<meta name="apple-mobile-web-app-capable" content="yes">`,
+          { html: true }
+        );
+      }
+      if (!this.statusBarMetaFound) {
+        element.append(
+          `<meta name="apple-mobile-web-app-status-bar-style" content="black">`,
+          { html: true }
+        );
       }
     }
   }
