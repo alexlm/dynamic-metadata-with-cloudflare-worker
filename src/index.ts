@@ -48,18 +48,25 @@ self.addEventListener('fetch', event => {
         return;
     }
     
-    // Always fetch fresh, prevent caching conflicts
+    const url = new URL(event.request.url);
+    
+    // Don't intercept external resources (fonts, CDNs, etc.)
+    if (!url.hostname.includes('smartcuisine.ai') && 
+        !url.hostname.includes('weweb-preview.io')) {
+        return; // Let browser handle external resources normally
+    }
+    
+    // Only handle same-origin requests to prevent conflicts
     event.respondWith(
-        fetch(event.request, { cache: 'no-cache' })
+        fetch(event.request)
             .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
+                // Don't throw errors for failed external resources
                 return response;
             })
             .catch(error => {
-                console.log('SW fetch failed:', error);
-                return new Response('Network error', { status: 503 });
+                console.log('SW fetch failed for:', event.request.url, error);
+                // For same-origin requests, pass through the error
+                return fetch(event.request);
             })
     );
 });
