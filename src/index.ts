@@ -13,6 +13,66 @@ export default {
     const url = new URL(request.url);
     const referer = request.headers.get('Referer');
 
+    // FIX 1: Handle service worker requests to prevent version conflicts
+    if (url.pathname === '/serviceworker.js' || url.pathname === '/sw.js') {
+      console.log("Intercepting service worker to fix version conflicts");
+      
+      // Fetch the original service worker from WeWeb
+      const originalSW = await fetch(`${domainSource}${url.pathname}`);
+      let swCode = await originalSW.text();
+      
+      // Replace with fixed service worker that handles version conflicts
+      swCode = `
+// Modified by Cloudflare Worker to fix version conflicts
+const version = ${Date.now()}; // Always unique version
+
+self.addEventListener('install', event => {
+    console.log('Service worker v' + version + ' installed');
+    self.skipWaiting(); // Force immediate activation, skip waiting
+});
+
+self.addEventListener('activate', event => {
+    console.log('Service worker v' + version + ' activated');
+    event.waitUntil(
+        // Clear ALL caches on new versions
+        caches.keys().then(names => {
+            return Promise.all(names.map(name => caches.delete(name)));
+        }).then(() => {
+            return self.clients.claim(); // Take control immediately
+        })
+    );
+});
+
+self.addEventListener('fetch', event => {
+    if (event.request.method === 'POST' || event.request.method === 'PUT' || event.request.method === 'DELETE') {
+        return;
+    }
+    
+    // Always fetch fresh, prevent caching conflicts
+    event.respondWith(
+        fetch(event.request, { cache: 'no-cache' })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response;
+            })
+            .catch(error => {
+                console.log('SW fetch failed:', error);
+                return new Response('Network error', { status: 503 });
+            })
+    );
+});
+`;
+      
+      return new Response(swCode, {
+        headers: { 
+          'Content-Type': 'application/javascript',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        }
+      });
+    }
+
     // Function to get the pattern configuration that matches the URL
     function getPatternConfig(url) {
       for (const patternConfig of patterns) {
@@ -233,10 +293,22 @@ class CustomHeaderHandler {
       }
     }
 
-    // Replace favicon URL and process link elements
+    // FIX 2: Handle link elements - fix hreflang URLs and favicon
     if (element.tagName === 'link') {
       const rel = element.getAttribute('rel');
-      console.log(`Processing link element with rel: ${rel}`);
+      const href = element.getAttribute('href');
+      
+      // Fix hreflang links that point to WeWeb preview domain
+      if (rel === 'alternate' && href && href.includes('weweb-preview.io')) {
+        const newHref = href.replace(
+          /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.weweb-preview\.io/,
+          'smartcuisine.ai'
+        );
+        element.setAttribute('href', newHref);
+        console.log('Fixed hreflang URL:', href, '->', newHref);
+      }
+      
+      // Handle favicon
       if (rel === 'icon' || rel === 'shortcut icon') {
         console.log('Replacing favicon URL');
         element.setAttribute('href', `${config.domainSource}/favicon.ico?_wwcv=150`);
