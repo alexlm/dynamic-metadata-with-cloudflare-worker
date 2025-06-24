@@ -18,21 +18,37 @@ export default {
       console.log("Intercepting WeWeb's auto-generated service worker");
       
       try {
-        // Fetch WeWeb's auto-generated service worker
-        const originalSW = await fetch(`${domainSource}${url.pathname}`);
+        // Fetch WeWeb's auto-generated service worker with cache busting
+        const cacheBuster = Date.now();
+        const originalSW = await fetch(`${domainSource}${url.pathname}?cb=${cacheBuster}`, {
+          cache: 'no-cache'
+        });
         const originalCode = await originalSW.text();
         
-        // DEBUG: Log the original service worker code to see what WeWeb generates
-        console.log("Original WeWeb service worker:", originalCode.substring(0, 200) + "...");
+        // DEBUG: Log the full original service worker to see what WeWeb actually generates
+        console.log("=== FULL WeWeb service worker code ===");
+        console.log(originalCode);
+        console.log("=== END service worker code ===");
         
         // Extract WeWeb's deployment version
         const versionMatch = originalCode.match(/const version = (\d+);/);
-        console.log("Version match result:", versionMatch);
+        console.log("Version regex match:", versionMatch);
+        
+        // Try alternative regex patterns in case WeWeb changed format
+        const altVersionMatch1 = originalCode.match(/version = (\d+)/);
+        const altVersionMatch2 = originalCode.match(/version:.*?(\d+)/);
+        const altVersionMatch3 = originalCode.match(/v(\d+)/);
+        
+        console.log("Alternative version matches:", {
+          alt1: altVersionMatch1,
+          alt2: altVersionMatch2, 
+          alt3: altVersionMatch3
+        });
         
         const wewebVersion = versionMatch ? versionMatch[1] : Date.now();
         
         console.log(`WeWeb deployment version extracted: ${wewebVersion}`);
-        console.log(`You said you deployed v445, but WeWeb generated v${wewebVersion}`);
+        console.log(`You said current version should be: 446`);
         
         // Create service worker using WeWeb's exact original code with correct version
         const fixedSW = `
