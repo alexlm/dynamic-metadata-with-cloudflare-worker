@@ -13,6 +13,98 @@ export default {
     const url = new URL(request.url);
     const referer = request.headers.get('Referer');
 
+    // CRITICAL FIX: Handle WeWeb's auto-generated service worker to prevent version conflicts
+    if (url.pathname === '/serviceworker.js' || url.pathname === '/sw.js') {
+      console.log("Intercepting WeWeb's auto-generated service worker");
+      
+      try {
+        // Fetch WeWeb's auto-generated service worker
+        const originalSW = await fetch(`${domainSource}${url.pathname}`);
+        const originalCode = await originalSW.text();
+        
+        // Extract WeWeb's deployment version
+        const versionMatch = originalCode.match(/const version = (\d+);/);
+        const wewebVersion = versionMatch ? versionMatch[1] : Date.now();
+        
+        console.log(`WeWeb deployment version: ${wewebVersion}`);
+        
+        // Create fixed service worker that properly handles WeWeb's version system
+        const fixedSW = `
+// Fixed WeWeb service worker for custom domain compatibility
+const version = ${wewebVersion}; // Match WeWeb's exact deployment version
+
+self.addEventListener('install', event => {
+    console.log('WeWeb SW v' + version + ' installed (custom domain fix)');
+    // Force activation to prevent version conflicts
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+    console.log('WeWeb SW v' + version + ' activated (custom domain fix)');
+    event.waitUntil(
+        // Clear old caches when WeWeb deploys new version
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (!cacheName.includes('v' + version)) {
+                        console.log('Clearing old cache:', cacheName);
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        }).then(() => {
+            return self.clients.claim(); // Take control immediately
+        })
+    );
+});
+
+self.addEventListener('fetch', event => {
+    // Keep WeWeb's original fetch handling but prevent conflicts
+    if (event.request.method === 'POST' || event.request.method === 'PUT' || event.request.method === 'DELETE') {
+        return;
+    }
+    
+    // Only intercept same-origin requests to prevent external resource issues
+    if (event.request.url.startsWith(self.location.origin)) {
+        event.respondWith(
+            fetch(event.request)
+                .then(response => {
+                    // Don't cache error responses
+                    if (response.status >= 200 && response.status < 300) {
+                        return response;
+                    }
+                    throw new Error('Bad response');
+                })
+                .catch(() => {
+                    // Fallback to network for failed requests
+                    return fetch(event.request);
+                })
+        );
+    }
+});
+`;
+        
+        return new Response(fixedSW, {
+          headers: { 
+            'Content-Type': 'application/javascript',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          }
+        });
+        
+      } catch (error) {
+        console.error('Service worker fix failed:', error);
+        // Fallback: minimal service worker
+        return new Response(`
+console.log('WeWeb service worker fallback');
+self.addEventListener('fetch', event => {
+    event.respondWith(fetch(event.request));
+});
+`, {
+          headers: { 'Content-Type': 'application/javascript' }
+        });
+      }
+    }
+
     // Function to get the pattern configuration that matches the URL
     function getPatternConfig(url) {
       for (const patternConfig of patterns) {
@@ -233,13 +325,25 @@ class CustomHeaderHandler {
       }
     }
 
-    // Replace favicon URL and process link elements
+    // FIX: Handle link elements - fix hreflang URLs and favicon
     if (element.tagName === 'link') {
       const rel = element.getAttribute('rel');
-      console.log(`Processing link element with rel: ${rel}`);
+      const href = element.getAttribute('href');
+      
+      // Fix hreflang links that point to WeWeb preview domain
+      if (rel === 'alternate' && href && href.includes('weweb-preview.io')) {
+        const newHref = href.replace(
+          /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.weweb-preview\.io/,
+          'smartcuisine.ai'
+        );
+        element.setAttribute('href', newHref);
+        console.log('Fixed hreflang URL:', href, '->', newHref);
+      }
+      
+      // Handle favicon
       if (rel === 'icon' || rel === 'shortcut icon') {
         console.log('Replacing favicon URL');
-        element.setAttribute('href', `${config.domainSource}/favicon.ico?_wwcv=150`);
+        element.setAttribute('href', `${config.domainSource}/favicon.ico`);
       }
     }
   }
