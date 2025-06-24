@@ -79,10 +79,28 @@ self.addEventListener('fetch', event => {
         });
         
       } catch (error) {
-        console.error('Service worker fix failed:', error);
+        console.error('Service worker processing failed:', error);
+        console.error('Error details:', error.message);
+        console.error('Error stack:', error.stack);
+        
+        // Try to fetch the service worker directly without processing
+        try {
+          const directFetch = await fetch(`${domainSource}${url.pathname}`);
+          const directCode = await directFetch.text();
+          console.log('Direct fetch successful, code length:', directCode.length);
+          console.log('Direct fetch code preview:', directCode.substring(0, 300));
+          
+          // Return the original code as-is if processing fails
+          return new Response(directCode, {
+            headers: { 'Content-Type': 'application/javascript' }
+          });
+        } catch (directError) {
+          console.error('Direct fetch also failed:', directError);
+        }
+        
         // Fallback: minimal service worker
         return new Response(`
-console.log('WeWeb service worker fallback');
+console.log('WeWeb service worker fallback - original processing failed');
 self.addEventListener('fetch', event => {
     event.respondWith(fetch(event.request));
 });
