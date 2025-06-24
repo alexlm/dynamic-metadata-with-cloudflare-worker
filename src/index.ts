@@ -13,130 +13,6 @@ export default {
     const url = new URL(request.url);
     const referer = request.headers.get('Referer');
 
-    // CRITICAL FIX: Handle WeWeb's auto-generated service worker to prevent version conflicts
-    if (url.pathname === '/serviceworker.js' || url.pathname === '/sw.js') {
-      console.log("🔥 WORKER IS INTERCEPTING SERVICE WORKER REQUEST! 🔥");
-      console.log("URL pathname:", url.pathname);
-      console.log("Full URL:", url.toString());
-      
-      try {
-        // Fetch WeWeb's auto-generated service worker with aggressive cache busting
-        const cacheBuster = Date.now();
-        const originalSW = await fetch(`${domainSource}${url.pathname}?cb=${cacheBuster}&v=${cacheBuster}`, {
-          cache: 'no-cache',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
-          }
-        });
-        const originalCode = await originalSW.text();
-        
-        // DEBUG: Log the full original service worker to see what WeWeb actually generates
-        console.log("=== FULL WeWeb service worker code ===");
-        console.log(originalCode);
-        console.log("=== END service worker code ===");
-        
-        // Extract WeWeb's deployment version
-        const versionMatch = originalCode.match(/const version = (\d+);/);
-        console.log("Version regex match:", versionMatch);
-        
-        // Try alternative regex patterns in case WeWeb changed format
-        const altVersionMatch1 = originalCode.match(/version = (\d+)/);
-        const altVersionMatch2 = originalCode.match(/version:.*?(\d+)/);
-        const altVersionMatch3 = originalCode.match(/v(\d+)/);
-        
-        console.log("Alternative version matches:", {
-          alt1: altVersionMatch1,
-          alt2: altVersionMatch2, 
-          alt3: altVersionMatch3
-        });
-        
-        const wewebVersion = versionMatch ? versionMatch[1] : Date.now();
-        
-        console.log(`WeWeb deployment version extracted: ${wewebVersion}`);
-        console.log(`You said current version should be: 446`);
-        
-        // Since WeWeb's version extraction is unreliable, use manual version management
-        // Update this number manually when you deploy new versions
-        const manualVersion = 446; // <-- UPDATE THIS when you deploy new WeWeb versions
-        
-        console.log(`Using manual version: ${manualVersion} (WeWeb was showing: ${wewebVersion})`);
-        
-        // Create service worker using WeWeb's exact original code with manual version
-        const fixedSW = `
-const version = ${manualVersion};
-self.addEventListener('install', event => {
-    // eslint-disable-next-line no-console
-    console.log(\`Service worker v\${version} installed\`);
-    // Force immediate activation to prevent version conflicts
-    self.skipWaiting();
-});
-self.addEventListener('activate', event => {
-    // eslint-disable-next-line no-console
-    console.log(\`Service worker v\${version} activated\`);
-    // Clear old caches and take control immediately
-    event.waitUntil(
-        caches.keys().then(names => {
-            return Promise.all(names.map(name => caches.delete(name)));
-        }).then(() => {
-            return self.clients.claim();
-        })
-    );
-});
-self.addEventListener('fetch', event => {
-    //No cache in service worker
-    if (event.request.method === 'POST' || event.request.method === 'PUT' || event.request.method === 'DELETE') {
-        return;
-    }
-
-    event.respondWith(fetch(event.request));
-});
-`;
-        
-        return new Response(fixedSW, {
-          headers: { 
-            'Content-Type': 'application/javascript',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'X-Worker-Version': '452-TEST' // Add header to confirm Worker is responding
-          }
-        });
-        
-      } catch (error) {
-        console.error('🚨 SERVICE WORKER PROCESSING ERROR:', error);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-        console.error('This is why we are falling back to original WeWeb service worker');
-        
-        // Try to fetch the service worker directly without processing
-        try {
-          const directFetch = await fetch(`${domainSource}${url.pathname}`);
-          const directCode = await directFetch.text();
-          console.log('✅ Direct fetch successful, returning original WeWeb service worker');
-          console.log('Original service worker length:', directCode.length);
-          
-          // Return the original code as-is if processing fails
-          return new Response(directCode, {
-            headers: { 
-              'Content-Type': 'application/javascript',
-              'X-Worker-Fallback': 'original-weweb' // Indicate this is fallback
-            }
-          });
-        } catch (directError) {
-          console.error('❌ Direct fetch also failed:', directError);
-        }
-        
-        // Last resort fallback
-        return new Response(`
-console.log('WeWeb service worker LAST RESORT fallback');
-self.addEventListener('fetch', event => {
-    event.respondWith(fetch(event.request));
-});
-`, {
-          headers: { 'Content-Type': 'application/javascript' }
-        });
-      }
-    }
-
     // Function to get the pattern configuration that matches the URL
     function getPatternConfig(url) {
       for (const patternConfig of patterns) {
@@ -357,25 +233,13 @@ class CustomHeaderHandler {
       }
     }
 
-    // FIX: Handle link elements - fix hreflang URLs and favicon
+    // Replace favicon URL and process link elements
     if (element.tagName === 'link') {
       const rel = element.getAttribute('rel');
-      const href = element.getAttribute('href');
-      
-      // Fix hreflang links that point to WeWeb preview domain
-      if (rel === 'alternate' && href && href.includes('weweb-preview.io')) {
-        const newHref = href.replace(
-          /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.weweb-preview\.io/,
-          'smartcuisine.ai'
-        );
-        element.setAttribute('href', newHref);
-        console.log('Fixed hreflang URL:', href, '->', newHref);
-      }
-      
-      // Handle favicon
+      console.log(`Processing link element with rel: ${rel}`);
       if (rel === 'icon' || rel === 'shortcut icon') {
         console.log('Replacing favicon URL');
-        element.setAttribute('href', `${config.domainSource}/favicon.ico`);
+        element.setAttribute('href', `${config.domainSource}/favicon.ico?_wwcv=150`);
       }
     }
   }
