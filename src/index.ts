@@ -102,28 +102,32 @@ self.addEventListener('fetch', event => {
         });
         
       } catch (error) {
-        console.error('Service worker processing failed:', error);
-        console.error('Error details:', error.message);
+        console.error('🚨 SERVICE WORKER PROCESSING ERROR:', error);
+        console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
+        console.error('This is why we are falling back to original WeWeb service worker');
         
         // Try to fetch the service worker directly without processing
         try {
           const directFetch = await fetch(`${domainSource}${url.pathname}`);
           const directCode = await directFetch.text();
-          console.log('Direct fetch successful, code length:', directCode.length);
-          console.log('Direct fetch code preview:', directCode.substring(0, 300));
+          console.log('✅ Direct fetch successful, returning original WeWeb service worker');
+          console.log('Original service worker length:', directCode.length);
           
           // Return the original code as-is if processing fails
           return new Response(directCode, {
-            headers: { 'Content-Type': 'application/javascript' }
+            headers: { 
+              'Content-Type': 'application/javascript',
+              'X-Worker-Fallback': 'original-weweb' // Indicate this is fallback
+            }
           });
         } catch (directError) {
-          console.error('Direct fetch also failed:', directError);
+          console.error('❌ Direct fetch also failed:', directError);
         }
         
-        // Fallback: minimal service worker
+        // Last resort fallback
         return new Response(`
-console.log('WeWeb service worker fallback - original processing failed');
+console.log('WeWeb service worker LAST RESORT fallback');
 self.addEventListener('fetch', event => {
     event.respondWith(fetch(event.request));
 });
