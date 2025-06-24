@@ -18,10 +18,14 @@ export default {
       console.log("Intercepting WeWeb's auto-generated service worker");
       
       try {
-        // Fetch WeWeb's auto-generated service worker with cache busting
+        // Fetch WeWeb's auto-generated service worker with aggressive cache busting
         const cacheBuster = Date.now();
-        const originalSW = await fetch(`${domainSource}${url.pathname}?cb=${cacheBuster}`, {
-          cache: 'no-cache'
+        const originalSW = await fetch(`${domainSource}${url.pathname}?cb=${cacheBuster}&v=${cacheBuster}`, {
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
         });
         const originalCode = await originalSW.text();
         
@@ -50,16 +54,32 @@ export default {
         console.log(`WeWeb deployment version extracted: ${wewebVersion}`);
         console.log(`You said current version should be: 446`);
         
-        // Create service worker using WeWeb's exact original code with correct version
+        // Since WeWeb's version extraction is unreliable, use manual version management
+        // Update this number manually when you deploy new versions
+        const manualVersion = 446; // <-- UPDATE THIS when you deploy new WeWeb versions
+        
+        console.log(`Using manual version: ${manualVersion} (WeWeb was showing: ${wewebVersion})`);
+        
+        // Create service worker using WeWeb's exact original code with manual version
         const fixedSW = `
-const version = ${wewebVersion};
+const version = ${manualVersion};
 self.addEventListener('install', event => {
     // eslint-disable-next-line no-console
     console.log(\`Service worker v\${version} installed\`);
+    // Force immediate activation to prevent version conflicts
+    self.skipWaiting();
 });
 self.addEventListener('activate', event => {
     // eslint-disable-next-line no-console
     console.log(\`Service worker v\${version} activated\`);
+    // Clear old caches and take control immediately
+    event.waitUntil(
+        caches.keys().then(names => {
+            return Promise.all(names.map(name => caches.delete(name)));
+        }).then(() => {
+            return self.clients.claim();
+        })
+    );
 });
 self.addEventListener('fetch', event => {
     //No cache in service worker
