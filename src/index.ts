@@ -15,7 +15,9 @@ export default {
 
     // CRITICAL FIX: Handle WeWeb's auto-generated service worker to prevent version conflicts
     if (url.pathname === '/serviceworker.js' || url.pathname === '/sw.js') {
-      console.log("Intercepting WeWeb's auto-generated service worker");
+      console.log("🔥 WORKER IS INTERCEPTING SERVICE WORKER REQUEST! 🔥");
+      console.log("URL pathname:", url.pathname);
+      console.log("Full URL:", url.toString());
       
       try {
         // Fetch WeWeb's auto-generated service worker with aggressive cache busting
@@ -94,7 +96,8 @@ self.addEventListener('fetch', event => {
         return new Response(fixedSW, {
           headers: { 
             'Content-Type': 'application/javascript',
-            'Cache-Control': 'no-cache, no-store, must-revalidate'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'X-Worker-Version': '452-TEST' // Add header to confirm Worker is responding
           }
         });
         
