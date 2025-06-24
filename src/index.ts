@@ -13,6 +13,71 @@ export default {
     const url = new URL(request.url);
     const referer = request.headers.get('Referer');
 
+    // SERVICE WORKER FIX: Intercept and force version to 444
+    if (url.pathname === '/serviceworker.js' || url.pathname === '/sw.js') {
+      console.log("🔥 Intercepting service worker - forcing version to 444");
+      
+      try {
+        // Fetch WeWeb's original service worker
+        const originalSW = await fetch(`${domainSource}${url.pathname}`);
+        let originalCode = await originalSW.text();
+        
+        // Log what WeWeb is generating
+        console.log("WeWeb's original service worker version:", originalCode.match(/const version = (\d+);/)?.[1] || 'not found');
+        
+        // Force replace ANY version number with 444
+        const fixedCode = originalCode.replace(
+          /const version = \d+;/g, 
+          'const version = 444;'
+        );
+        
+        // Also handle if WeWeb changes the format
+        const finalCode = fixedCode
+          .replace(/version = \d+/g, 'version = 444')
+          .replace(/version:\s*\d+/g, 'version: 444');
+        
+        console.log("✅ Service worker version forced to 444");
+        
+        return new Response(finalCode, {
+          headers: { 
+            'Content-Type': 'application/javascript',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'X-Forced-Version': '444'
+          }
+        });
+        
+      } catch (error) {
+        console.error("❌ Service worker modification failed:", error);
+        
+        // Fallback: hardcoded working service worker
+        const fallbackSW = `
+const version = 444;
+self.addEventListener('install', event => {
+    // eslint-disable-next-line no-console
+    console.log(\`Service worker v\${version} installed\`);
+});
+self.addEventListener('activate', event => {
+    // eslint-disable-next-line no-console
+    console.log(\`Service worker v\${version} activated\`);
+});
+self.addEventListener('fetch', event => {
+    //No cache in service worker
+    if (event.request.method === 'POST' || event.request.method === 'PUT' || event.request.method === 'DELETE') {
+        return;
+    }
+    event.respondWith(fetch(event.request));
+});
+`;
+        
+        return new Response(fallbackSW, {
+          headers: { 
+            'Content-Type': 'application/javascript',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          }
+        });
+      }
+    }
+
     // Function to get the pattern configuration that matches the URL
     function getPatternConfig(url) {
       for (const patternConfig of patterns) {
