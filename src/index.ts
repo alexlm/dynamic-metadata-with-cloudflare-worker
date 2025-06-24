@@ -22,19 +22,27 @@ export default {
         const originalSW = await fetch(`${domainSource}${url.pathname}`);
         const originalCode = await originalSW.text();
         
+        // DEBUG: Log the original service worker code to see what WeWeb generates
+        console.log("Original WeWeb service worker:", originalCode.substring(0, 200) + "...");
+        
         // Extract WeWeb's deployment version
         const versionMatch = originalCode.match(/const version = (\d+);/);
+        console.log("Version match result:", versionMatch);
+        
         const wewebVersion = versionMatch ? versionMatch[1] : Date.now();
         
-        console.log(`WeWeb deployment version: ${wewebVersion}`);
+        console.log(`WeWeb deployment version extracted: ${wewebVersion}`);
+        console.log(`You said you deployed v445, but WeWeb generated v${wewebVersion}`);
         
         // Create fixed service worker that properly handles WeWeb's version system
         const fixedSW = `
 // Fixed WeWeb service worker for custom domain compatibility
+// WeWeb UI shows v445, but actual service worker version is ${wewebVersion}
 const version = ${wewebVersion}; // Match WeWeb's exact deployment version
 
 self.addEventListener('install', event => {
     console.log('WeWeb SW v' + version + ' installed (custom domain fix)');
+    console.log('UI version: 445, Actual SW version: ' + version);
     // Force activation to prevent version conflicts
     self.skipWaiting();
 });
