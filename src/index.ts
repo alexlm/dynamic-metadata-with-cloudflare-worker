@@ -13,6 +13,69 @@ export default {
     const url = new URL(request.url);
     const referer = request.headers.get('Referer');
 
+    // CRITICAL FIX: Handle WeWeb's auto-generated service worker to prevent version conflicts
+    if (url.pathname === '/serviceworker.js' || url.pathname === '/sw.js') {
+      console.log("Intercepting WeWeb's auto-generated service worker");
+      
+      try {
+        // Fetch WeWeb's auto-generated service worker
+        const originalSW = await fetch(`${domainSource}${url.pathname}`);
+        const originalCode = await originalSW.text();
+        
+        // DEBUG: Log the original service worker code to see what WeWeb generates
+        console.log("Original WeWeb service worker:", originalCode.substring(0, 200) + "...");
+        
+        // Extract WeWeb's deployment version
+        const versionMatch = originalCode.match(/const version = (\d+);/);
+        console.log("Version match result:", versionMatch);
+        
+        const wewebVersion = versionMatch ? versionMatch[1] : Date.now();
+        
+        console.log(`WeWeb deployment version extracted: ${wewebVersion}`);
+        console.log(`You said you deployed v445, but WeWeb generated v${wewebVersion}`);
+        
+        // Create service worker using WeWeb's exact original code with correct version
+        const fixedSW = `
+const version = ${wewebVersion};
+self.addEventListener('install', event => {
+    // eslint-disable-next-line no-console
+    console.log(\`Service worker v\${version} installed\`);
+});
+self.addEventListener('activate', event => {
+    // eslint-disable-next-line no-console
+    console.log(\`Service worker v\${version} activated\`);
+});
+self.addEventListener('fetch', event => {
+    //No cache in service worker
+    if (event.request.method === 'POST' || event.request.method === 'PUT' || event.request.method === 'DELETE') {
+        return;
+    }
+
+    event.respondWith(fetch(event.request));
+});
+`;
+        
+        return new Response(fixedSW, {
+          headers: { 
+            'Content-Type': 'application/javascript',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          }
+        });
+        
+      } catch (error) {
+        console.error('Service worker fix failed:', error);
+        // Fallback: minimal service worker
+        return new Response(`
+console.log('WeWeb service worker fallback');
+self.addEventListener('fetch', event => {
+    event.respondWith(fetch(event.request));
+});
+`, {
+          headers: { 'Content-Type': 'application/javascript' }
+        });
+      }
+    }
+
     // Function to get the pattern configuration that matches the URL
     function getPatternConfig(url) {
       for (const patternConfig of patterns) {
@@ -233,13 +296,25 @@ class CustomHeaderHandler {
       }
     }
 
-    // Replace favicon URL and process link elements
+    // FIX: Handle link elements - fix hreflang URLs and favicon
     if (element.tagName === 'link') {
       const rel = element.getAttribute('rel');
-      console.log(`Processing link element with rel: ${rel}`);
+      const href = element.getAttribute('href');
+      
+      // Fix hreflang links that point to WeWeb preview domain
+      if (rel === 'alternate' && href && href.includes('weweb-preview.io')) {
+        const newHref = href.replace(
+          /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.weweb-preview\.io/,
+          'smartcuisine.ai'
+        );
+        element.setAttribute('href', newHref);
+        console.log('Fixed hreflang URL:', href, '->', newHref);
+      }
+      
+      // Handle favicon
       if (rel === 'icon' || rel === 'shortcut icon') {
         console.log('Replacing favicon URL');
-        element.setAttribute('href', `${config.domainSource}/favicon.ico?_wwcv=150`);
+        element.setAttribute('href', `${config.domainSource}/favicon.ico`);
       }
     }
   }
